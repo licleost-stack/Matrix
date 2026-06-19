@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tablero Financiero - Matrix Edition</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #000; /* Fondo negro absoluto para que resalte Matrix */
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* El lienzo de Matrix fijo de fondo */
+        #matrix-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* El contenedor ahora tiene z-index alto y fondo semi-transparente */
+        .container {
+            max-width: 500px;
+            width: 100%;
+            background: rgba(30, 41, 59, 0.85); /* Un toque transparente para ver el fondo */
+            backdrop-filter: blur(8px); /* Espectacular efecto de desenfoque tipo vidrio */
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.7);
+            z-index: 10; /* Por encima de los unos y ceros */
+            box-sizing: border-box;
+        }
+
+        h1 { text-align: center; color: #38bdf8; margin-bottom: 5px; font-size: 24px; }
+        p.subtitle { text-align: center; color: #94a3b8; margin-top: 0; font-size: 14px; margin-bottom: 20px; }
+        
+        .api-box {
+            background: rgba(51, 65, 85, 0.9);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .api-box label { display: block; font-size: 12px; color: #94a3b8; font-weight: bold; }
+        .api-box input {
+            width: 100%; padding: 8px; margin-top: 5px; background: #0f172a; border: 1px solid #475569;
+            border-radius: 6px; color: #fff; box-sizing: border-box; font-size: 14px;
+        }
+        
+        button {
+            width: 100%; padding: 12px; background: #0ea5e9; color: white; border: none;
+            border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        button:hover { background: #0284c7; }
+
+        .ticker-list { margin-top: 15px; }
+        .ticker-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0; border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+        .ticker-name { font-weight: bold; font-size: 16px; }
+        .ticker-company { font-size: 12px; color: #94a3b8; display: block; }
+        .ticker-price-box { text-align: right; }
+        .ticker-price { font-weight: bold; font-size: 16px; }
+        .ticker-change { font-size: 13px; font-weight: 500; margin-top: 2px; }
+        
+        .sube { color: #22c55e; }
+        .baja { color: #ef4444; }
+        .igual { color: #94a3b8; }
+        
+        #status { text-align: center; font-size: 12px; color: #94a3b8; margin-top: 10px; }
+        
+        .btn-config {
+            background: none; border: none; color: #64748b; font-size: 11px; 
+            text-decoration: underline; margin-top: 20px; cursor: pointer; padding: 5px; width: auto; display: block; margin-left: auto; margin-right: auto;
+        }
+        .btn-config:hover { color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+<canvas id="matrix-canvas"></canvas>
+
+<div class="container">
+    <h1>📈 Cotizaciones en Vivo</h1>
+    <p class="subtitle">Tu Monitor Personal de Mercados</p>
+    
+    <div class="api-box" id="contenedor-api">
+        <label for="api-key">PEGÁ ACÁ TU API KEY DE FINNHUB:</label>
+        <input type="text" id="api-key" placeholder="Pegá el código largo acá">
+    </div>
+
+    <button onclick="actualizarCotizaciones()">🔄 Actualizar Precios</button>
+    <div id="status"></div>
+
+    <div class="ticker-list" id="lista-precios"></div>
+    
+    <button class="btn-config" onclick="mostrarConfigApi()">⚙️ Cambiar API Key</button>
+</div>
+
+<script>
+    // --- EFECTO MATRIX (Unos y Ceros) ---
+    const canvas = document.getElementById('matrix-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Ajustar tamaño del canvas a la pantalla entera
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Configuración de los caracteres
+    const letras = ["0", "1"];
+    const fontSize = 16;
+    let columnas = canvas.width / fontSize;
+
+    // Array para seguir la posición Y de cada columna
+    let gotas = [];
+    for (let x = 0; x < columnas; x++) {
+        gotas[x] = 1;
+    }
+
+    function dibujarMatrix() {
+        // Fondo negro semi-transparente para dejar el rastro/estela típico de Matrix
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Color verde Matrix clásico
+        ctx.fillStyle = '#0f0';
+        ctx.font = fontSize + 'px monospace';
+
+        // Dibujar los caracteres
+        for (let i = 0; i < gotas.length; i++) {
+            // Elegir un 0 o un 1 al azar
+            const texto = letras[Math.floor(Math.random() * letras.length)];
+            
+            // x = posición de la columna, y = posición de la gota
+            ctx.fillText(texto, i * fontSize, gotas[i] * fontSize);
+
+            // Si llega al fondo de la pantalla, reiniciar arriba aleatoriamente
+            if (gotas[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                gotas[i] = 0;
+            }
+
+            // Mover la gota hacia abajo
+            gotas[i]++;
+        }
+    }
+    // Ejecutar la animación a unos 30 FPS aproximados para que quede fluido
+    setInterval(dibujarMatrix, 33);
+
+
+    // --- LÓGICA DE COTIZACIONES ---
+    const activos = [
+        { ticker: "AAPL", nombre: "Apple Inc." },
+        { ticker: "MSFT", nombre: "Microsoft" },
+        { ticker: "TSLA", nombre: "Tesla" },
+        { ticker: "NVDA", nombre: "NVIDIA" },
+        { ticker: "AMZN", nombre: "Amazon.com" }, 
+        { ticker: "META", nombre: "Meta Platforms" },
+        { ticker: "SPY",  nombre: "S&P 500 ETF" },
+        { ticker: "QQQ",  nombre: "Nasdaq 100 ETF" },
+        { ticker: "GLD",  nombre: "Oro (ETF GLD)" },
+        { ticker: "BINANCE:BTCUSDT", nombre: "Bitcoin" }
+    ];
+
+    window.onload = function() {
+        let claveGuardada = localStorage.getItem('finnhub_key');
+        if(claveGuardada) {
+            document.getElementById('api-key').value = claveGuardada;
+            document.getElementById('contenedor-api').style.display = "none";
+            actualizarCotizaciones();
+        } else {
+            renderListaVacia();
+        }
+    };
+
+    function renderListaVacia() {
+        const lista = document.getElementById('lista-precios');
+        lista.innerHTML = activos.map(a => {
+            let tickerMostrar = a.ticker === 'BINANCE:BTCUSDT' ? 'BTC' : a.ticker;
+            return `
+                <div class="ticker-row">
+                    <div>
+                        <span class="ticker-name">${tickerMostrar}</span>
+                        <span class="ticker-company">${a.nombre}</span>
+                    </div>
+                    <div class="ticker-price-box">
+                        <span class="ticker-price">--</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function mostrarConfigApi() {
+        document.getElementById('contenedor-api').style.display = "block";
+    }
+
+    async function actualizarCotizaciones() {
+        const apiKey = document.getElementById('api-key').value.trim();
+        const status = document.getElementById('status');
+        
+        if (!apiKey) {
+            alert("Por favor, poné tu API Key de Finnhub primero.");
+            return;
+        }
+
+        localStorage.setItem('finnhub_key', apiKey);
+        document.getElementById('contenedor-api').style.display = "none";
+        status.innerText = "Buscando precios del mercado...";
+
+        const lista = document.getElementById('lista-precios');
+
+        const promesas = activos.map(async (a) => {
+            let tickerMostrar = a.ticker === 'BINANCE:BTCUSDT' ? 'BTC' : a.ticker;
+            try {
+                const url = `https://finnhub.io/api/v1/quote?symbol=${a.ticker}&token=${apiKey}`;
+                const respuesta = await fetch(url);
+                const datos = await respuesta.json();
+
+                const precio = datos.c;
+                const cambioPorcentaje = datos.dp;
+
+                if (precio === 0 || precio === null || cambioPorcentaje === null) {
+                    throw new Error("Sin datos");
+                }
+
+                let claseColor = "igual";
+                let signo = "";
+                if (cambioPorcentaje > 0) { claseColor = "sube"; signo = "+"; }
+                else if (cambioPorcentaje < 0) { claseColor = "baja"; }
+
+                return `
+                    <div class="ticker-row">
+                        <div>
+                            <span class="ticker-name">${tickerMostrar}</span>
+                            <span class="ticker-company">${a.nombre}</span>
+                        </div>
+                        <div class="ticker-price-box">
+                            <span class="ticker-price">U$S ${precio.toFixed(2)}</span>
+                            <div class="ticker-change ${claseColor}">${signo}${cambioPorcentaje.toFixed(2)}%</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                return `
+                    <div class="ticker-row">
+                        <div>
+                            <span class="ticker-name">${tickerMostrar}</span>
+                            <span class="ticker-company">${a.nombre}</span>
+                        </div>
+                        <div class="ticker-price-box">
+                            <span class="ticker-price" style="color:#64748b;">Error de cotización</span>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+
+        const resultadosHtml = await Promise.all(promesas);
+        lista.innerHTML = resultadosHtml.join('');
+        status.innerText = "Precios actualizados.";
+    }
+</script>
+</body>
+</html>
